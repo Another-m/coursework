@@ -1,10 +1,9 @@
 import requests
+from pprint import pprint
 
-def get_photo(METHOD_NAME, token_vk, id):
-    url = 'https://api.vk.com/method/' + METHOD_NAME
-    if id == "self profile": owner = 'owner'
-    else: owner = 'owner_id'
-    params = {owner: id, 'album_id': 'profile', 'access_token': token_vk, 'extended': 1, 'v': 5.131}
+def get_photo(method_name, token_vk, id):
+    url = 'https://api.vk.com/method/' + method_name
+    params = {'owner_id': id, 'album_id': 'profile', 'access_token': token_vk, 'extended': 1, 'v': 5.131}
     response = requests.get(url, params=params)
 
     if response.status_code == 200:
@@ -12,39 +11,30 @@ def get_photo(METHOD_NAME, token_vk, id):
         return photos
     else: print(response.status_code)
 
-def download(token_yd, id):
-    token_vk = "958eb5d439726565e9333aa30e50e0f937ee432e927f0dbd541c541887d919a7c56f95c04217915c32008"
-    METHOD_NAME = "photos.get"
-    photos_vk = get_photo(METHOD_NAME, token_vk, id)
-
-    count = photos_vk['response']['count']
+def download(photos_vk, token_yd):
     likes_list = []
     log = []
     files = []
-    print('Loading...')
+    count = photos_vk['response']['count']
     for num, content in enumerate(photos_vk['response']['items']):
         url_photo = content['sizes'][-1]['url']
-        type = content['sizes'][-1]['type']
+        type_size = content['sizes'][-1]['type']
         likes = content['likes']['count']
         date = content['date']
-        if likes not in likes_list: likes_list.append(likes)
-        else: likes = str(likes) + "_" + str(date)
-        log.append({'file_name': str(likes) + '.jpg', 'size': type})
-        print(f'{round((num+1)/count*100, 2)} %')
+        if likes not in likes_list:
+            likes_list.append(likes)
+        else:
+            likes = str(likes) + "_" + str(date)
+        log.append({'file_name': str(likes) + '.jpg', 'size': type_size})
         file_path = f"images_vk/{likes}.jpg"
         download = requests.get(url_photo)
         file = upload(token_yd, file_path, download)
         files.append(file[1])
-
+        print(f'{round((num+1)/count*100, 2)} %')
     log_file = {'count_photo': count, 'photos': log}
-    file_path = "images_vk/log_file.json"
-    file = upload(token_yd, file_path, log_file)
-    print('Сompleted!')
-    print(f"Файлы {', '.join(files)} успешно загружены в директорию /{file[0]}/ на яндекс диск")
-    return log_file
+    return [log_file, files]
 
 def upload(token_yd, file_path, data):
-    # Файлы загружаются в папку images_vk/ на я.диск
     url = "https://cloud-api.yandex.net/v1/disk/resources/upload"
     headers = {'Content-Type': 'application/json', 'Authorization': f'OAuth {token_yd}'}
     params = {"path": file_path, "overwrite": "true"}
@@ -55,9 +45,37 @@ def upload(token_yd, file_path, data):
     if upload_file.status_code == 201:
         return filename
 
-if __name__ == "__main__":
-    token_yd = 'AQAAAAABNrQ-...'
-    # id = "self profile"
-    id = "1"
+def create_folder(path, token_yd):
+    url = "https://cloud-api.yandex.net/v1/disk/resources"
+    headers = {'Content-Type': 'application/json', 'Authorization': f'OAuth {token_yd}'}
+    dir = requests.put(f'{url}?path={path}', headers=headers)
+    if dir.status_code != 200:
+        requests.put(f'{url}?path={path}', headers=headers)
 
-    download(token_yd, id)
+def main_func(id, token_vk, token_yd):
+    method_name_vk = "photos.get"
+    create_folder('images_vk', token_yd)
+    photos_vk = get_photo(method_name_vk, token_vk, id)
+    print('Loading...')
+    data_list = download(photos_vk, token_yd)
+    file_path = "images_vk/log_file.json"
+    file = upload(token_yd, file_path, data_list[0])
+    print('Сompleted!')
+    print(f"Файлы {', '.join(data_list[1])} успешно загружены в директорию /{file[0]}/ на яндекс диск")
+    return data_list[0]
+
+def input_data():
+    token_vk = input('Введите токен ВК: ')
+    token_yd = input('Введите токен Яндекск диска: ')
+    id = input('Введите ID пользователя ВК: ')
+    log_file = main_func(id, token_vk, token_yd)
+    ppr_log = input('\nРаспечатать лог файл? Ответ: \"да/y)\": ')
+    if ppr_log == 'да' or ppr_log == '1' or ppr_log == 'y':
+        pprint(log_file)
+        input_data()
+    else:
+        print()
+        input_data()
+
+if __name__ == "__main__":
+    input_data()
